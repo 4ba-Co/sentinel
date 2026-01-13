@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: myapp
+        image: myapp:latest
+        command:
+        - sentinel
+        - --grace-period=30s
+        - --health-cmd=/app/healthcheck.sh
+        - --health-interval=10s
+        - --alert=stderr
+        - --log-format=json
+        - --
+        - /app/server
+        ports:
+        - containerPort: 8080
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "500m"

@@ -1,0 +1,20 @@
+[Unit]
+Description=My App with Sentinel
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/sentinel \
+    --restart on-failure \
+    --max-retries 5 \
+    --grace-period 30s \
+    --health-cmd "/usr/local/bin/healthcheck.sh" \
+    --health-interval 30s \
+    --alert webhook \
+    --webhook-url http://alertmanager:9093/api/v1/alerts \
+    -- /usr/local/bin/myapp
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

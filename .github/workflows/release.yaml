@@ -1,0 +1,150 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: Build and Push
+    strategy:
+      matrix:
+        include:
+          - platform: amd64
+            runner: blacksmith-8vcpu-ubuntu-2204
+            docker_platform: linux/amd64
+          - platform: arm64
+            runner: blacksmith-8vcpu-ubuntu-2204-arm
+            docker_platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image name to lowercase
+        id: image
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build Go binary
+        env:
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w" -o sentinel .
+          chmod +x sentinel
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-linux-${{ matrix.platform }}
+          path: sentinel
+
+      - name: Setup Docker Builder
+        uses: useblacksmith/setup-docker-builder@v1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Dockerfile
+        run: |
+          cat > Dockerfile.release <<'EOF'
+          FROM scratch
+          COPY sentinel /sentinel
+          ENTRYPOINT ["/sentinel"]
+          EOF
+
+      - name: Build and push Docker image
+        uses: useblacksmith/build-push-action@v2
+        with:
+          context: .
+          file: Dockerfile.release
+          platforms: ${{ matrix.docker_platform }}
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ matrix.platform }}
+          provenance: false
+
+  merge-manifests:
+    name: Merge Multi-arch Manifest
+    needs: build
+    runs-on: blacksmith
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Set image name to lowercase
+        id: image
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Create and push multi-arch manifest
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}
+        run: |
+          TAGS="${{ steps.meta.outputs.tags }}"
+          for tag in ${TAGS}; do
+            docker manifest create ${tag} \
+              ${IMAGE}:amd64 \
+              ${IMAGE}:arm64
+            docker manifest push ${tag}
+          done
+
+  release:
+    name: Create Release
+    runs-on: blacksmith
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          for dir in ./artifacts/sentinel-*; do
+            name=$(basename "$dir")
+            cp "$dir/sentinel" "release/$name"
+            chmod +x "release/$name"
+          done
+          cd release && sha256sum * > checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+          generate_release_notes: true

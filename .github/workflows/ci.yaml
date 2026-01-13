@@ -1,0 +1,163 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - 'v*'
+  pull_request:
+
+# 同一分支新推送取消旧的运行
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: blacksmith-2vcpu-ubuntu-2204
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run staticcheck
+        uses: dominikh/staticcheck-action@v1
+        with:
+          version: "latest"
+
+      - name: Check go mod tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+  test:
+    name: Test
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Run tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          files: coverage.out
+        continue-on-error: true
+
+  build:
+    name: Build
+    runs-on: blacksmith-2vcpu-ubuntu-2204
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build
+        env:
+          CGO_ENABLED: 0
+        run: go build -ldflags="-s -w" -o sentinel .
+
+      - name: Smoke test
+        run: |
+          ./sentinel --timeout 5s -- echo "hello world"
+          ./sentinel -- sh -c "exit 0"
+
+  # 只在 main 分支和 PR 时跑完整集成测试
+  integration:
+    name: Integration Test
+    needs: [lint, test, build]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build
+        env:
+          CGO_ENABLED: 0
+        run: go build -ldflags="-s -w" -o sentinel .
+
+      - name: Test exit code propagation
+        run: |
+          ./sentinel -- sh -c "exit 42" || [ $? -eq 42 ]
+          echo "exit code propagation OK"
+
+      - name: Test timeout
+        run: |
+          timeout 5 ./sentinel --timeout 1s -- sleep 10 || [ $? -eq 124 ]
+          echo "timeout OK"
+
+      - name: Test restart policy
+        run: |
+          ./sentinel --restart on-failure --max-retries 2 -- sh -c "exit 1" || true
+          echo "restart OK"
+
+      - name: Test idle timeout
+        run: |
+          timeout 5 ./sentinel --idle-timeout 1s -- sleep 10 || [ $? -eq 1 ]
+          echo "idle timeout OK"
+
+      - name: Test JSON log format
+        run: |
+          ./sentinel --log-format json -- echo "test" 2>&1 | head -1 | jq . > /dev/null
+          echo "json format OK"
+
+      - name: Test health check
+        run: |
+          ./sentinel --health-cmd "exit 0" --health-interval 1s --timeout 3s -- sleep 2
+          echo "health check OK"
+
+  # 只在 main 分支验证多架构构建
+  build-matrix:
+    name: Build (${{ matrix.platform }})
+    needs: [lint, test, build]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - platform: amd64
+            runner: blacksmith-2vcpu-ubuntu-2204
+          - platform: arm64
+            runner: blacksmith-2vcpu-ubuntu-2204-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build
+        env:
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w" -o sentinel .
+          ./sentinel --timeout 2s -- echo "build OK on ${{ matrix.platform }}"

@@ -1,0 +1,9 @@
+timeout: 30s
+restart: on-failure
+max_retries: 3
+grace_period: 5s
+log_format: text
+alert:
+  - stderr
+success_codes:
+  - 0
