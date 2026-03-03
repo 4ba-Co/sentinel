@@ -105,4 +105,7 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+# Claude
+.claude
+
 # End of https://www.toptal.com/developers/gitignore/api/go,visualstudiocode,macos,windows
