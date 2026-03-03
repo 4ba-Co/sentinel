@@ -3,6 +3,7 @@ package signal
 import (
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/4ba-Co/sentinel/internal/logger"
@@ -65,8 +66,33 @@ func IsPID1() bool {
 	return os.Getpid() == 1
 }
 
+// ReapResult holds the exit status collected by the zombie reaper
+// for a tracked child process.
+type ReapResult struct {
+	ExitStatus int
+}
+
+// trackedPIDs maps child PIDs to channels that receive their exit status
+// when the zombie reaper collects them. This prevents the reaper from
+// silently consuming the main child's exit status before runner.Wait()
+// can collect it.
+var trackedPIDs sync.Map // int -> chan ReapResult
+
+// TrackPID registers a PID so the reaper will forward its exit status
+// instead of silently discarding it. Returns a channel that receives
+// the result if the reaper collects this PID before cmd.Wait() does.
+func TrackPID(pid int) <-chan ReapResult {
+	ch := make(chan ReapResult, 1)
+	trackedPIDs.Store(pid, ch)
+	return ch
+}
+
+// UntrackPID removes a PID from reaper tracking.
+func UntrackPID(pid int) {
+	trackedPIDs.Delete(pid)
+}
+
 func SetupReaper() {
-	// Setup SIGCHLD handler for zombie reaping (PID 1 mode)
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGCHLD)
 
@@ -84,6 +110,20 @@ func reapZombies() {
 		if pid <= 0 || err != nil {
 			break
 		}
-		logger.Debug("reaped zombie process, pid=%d", pid)
+		if val, ok := trackedPIDs.LoadAndDelete(pid); ok {
+			// This is a managed child process — forward exit status
+			// to the runner instead of silently discarding it.
+			ch := val.(chan ReapResult)
+			exitCode := 0
+			if status.Exited() {
+				exitCode = status.ExitStatus()
+			} else if status.Signaled() {
+				exitCode = 128 + int(status.Signal())
+			}
+			ch <- ReapResult{ExitStatus: exitCode}
+			logger.Debug("forwarded exit status for managed process, pid=%d, code=%d", pid, exitCode)
+		} else {
+			logger.Debug("reaped zombie process, pid=%d", pid)
+		}
 	}
 }

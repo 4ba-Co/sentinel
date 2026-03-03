@@ -28,10 +28,10 @@ func main() {
 
 	logger.Info("sentinel starting, command: %v", cfg.Command)
 
-	// Setup zombie reaper (always enabled, critical for PID 1)
-	signal.SetupReaper()
+	// Setup zombie reaper only in PID 1 mode
 	if signal.IsPID1() {
 		logger.Info("running as PID 1, enabling init mode")
+		signal.SetupReaper()
 	}
 
 	exitCode := run(cfg)

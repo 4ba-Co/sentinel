@@ -12,6 +12,7 @@ import (
 
 	"github.com/4ba-Co/sentinel/internal/config"
 	"github.com/4ba-Co/sentinel/internal/logger"
+	"github.com/4ba-Co/sentinel/internal/signal"
 )
 
 // shellMetaChars contains characters that require shell interpretation.
@@ -112,6 +113,7 @@ type Runner struct {
 	done         chan struct{}
 	stdoutWriter *ActivityWriter
 	stderrWriter *ActivityWriter
+	reapCh       <-chan signal.ReapResult
 }
 
 func New(cfg *config.Config) *Runner {
@@ -155,6 +157,7 @@ func (r *Runner) Start(ctx context.Context) error {
 
 	r.cmd = cmd
 	r.running = true
+	r.reapCh = signal.TrackPID(cmd.Process.Pid)
 
 	logger.Info("process started, pid=%d", cmd.Process.Pid)
 
@@ -164,11 +167,18 @@ func (r *Runner) Start(ctx context.Context) error {
 func (r *Runner) Wait() (int, error) {
 	r.mu.Lock()
 	cmd := r.cmd
+	reapCh := r.reapCh
 	r.mu.Unlock()
 
 	if cmd == nil {
 		return -1, nil
 	}
+
+	defer func() {
+		if cmd.Process != nil {
+			signal.UntrackPID(cmd.Process.Pid)
+		}
+	}()
 
 	err := cmd.Wait()
 
@@ -181,6 +191,16 @@ func (r *Runner) Wait() (int, error) {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		} else {
+			// cmd.Wait() failed (e.g. zombie reaper already collected this PID).
+			// Check if the reaper has forwarded the exit status.
+			if reapCh != nil {
+				select {
+				case result := <-reapCh:
+					logger.Info("process exited, code=%d (collected by reaper)", result.ExitStatus)
+					return result.ExitStatus, nil
+				default:
+				}
+			}
 			return -1, err
 		}
 	}
