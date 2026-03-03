@@ -43,6 +43,7 @@ sentinel [flags] -- command [args...]
 | `--health-interval` | Health check interval | `30s` |
 | `--health-timeout` | Health check timeout | `5s` |
 | `--alert` | Alert methods (comma-separated) | `stderr` |
+| `--alert-events` | Alert event types (comma-separated) | all except `success` |
 | `--webhook-url` | Webhook URL for alerts | none |
 | `--alert-cmd` | Custom alert script | none |
 | `--alert-on-success` | Send alert on successful exit | `false` |
@@ -88,6 +89,15 @@ sentinel \
   -- ./backup.sh
 ```
 
+**Cron job with only success notification (no start alert):**
+```bash
+sentinel \
+  --alert-events success \
+  --alert script \
+  --alert-cmd './notify.sh' \
+  -- ./backup.sh
+```
+
 **Using config file:**
 ```bash
 sentinel --config config.yaml -- ./my_app
@@ -106,7 +116,10 @@ alert:
   - stderr
   - webhook
 webhook_url: "https://hooks.slack.com/xxx"
-alert_on_success: true
+alert_events:
+  - exited
+  - success
+  - health_failed
 log_format: json
 success_codes:
   - 0
@@ -123,7 +136,7 @@ When using `--alert-cmd`, the script receives these environment variables:
 - `SENTINEL_COMMAND`: The wrapped command
 - `SENTINEL_HOSTNAME`: Host name
 
-> **Note:** The `success` event is only sent when `--alert-on-success` is enabled. By default, only non-success exits trigger the `exited` event.
+> **Note:** By default, alerts are sent for all event types except `success`. Use `--alert-on-success` to add the `success` event, or `--alert-events` to specify exactly which events you want (e.g., `--alert-events success,exited` to receive only those two).
 
 ### Alert Script Example
 

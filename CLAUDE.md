@@ -44,7 +44,7 @@ go mod tidy
 - **runner** — Process lifecycle (`Start`/`Wait`/`Signal`/`Kill`). Creates processes in new process groups (`Setpgid: true`) and signals the entire group. `ActivityWriter` in `output.go` wraps stdout/stderr to track last write time for idle detection.
 - **signal** — Signal handler for SIGTERM/INT/QUIT/HUP/USR1/USR2. Zombie reaper for PID 1 mode via `SIGCHLD` and `Wait4(-1, ..., WNOHANG)`. Channel-based coordination (`Done()` channel).
 - **health** — Periodic health check command execution. Fails after 3 consecutive failures, signals via `Failed()` channel.
-- **alert** — Three backends: stderr (log), webhook (HTTP POST JSON), script (passes event data via env vars `SENTINEL_EVENT`, `SENTINEL_EXIT_CODE`, etc.).
+- **alert** — Three backends: stderr (log), webhook (HTTP POST JSON), script (passes event data via env vars `SENTINEL_EVENT`, `SENTINEL_EXIT_CODE`, etc.). Event filtering via `Config.AlertEvents`; `Send()` drops events not in the list.
 - **logger** — Global singleton structured logger with mutex-protected writes. Supports text and JSON output formats. Tests redirect output via `logger.SetOutput()`.
 
 **CLI parsing**: `cmd/root.go` uses stdlib `flag.FlagSet` (not cobra). Command is separated by `--` delimiter.

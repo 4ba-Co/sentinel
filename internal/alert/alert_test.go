@@ -132,6 +132,7 @@ func TestAlerterSuccessEvent(t *testing.T) {
 	cfg.AlertMethods = []string{"webhook"}
 	cfg.WebhookURL = server.URL
 	cfg.Command = []string{"test", "cmd"}
+	cfg.AlertEvents = append(cfg.AlertEvents, "success")
 
 	a := New(cfg)
 	a.Send(Event{
@@ -166,5 +167,48 @@ func TestEventTypes(t *testing.T) {
 		if e == "" {
 			t.Errorf("event type should not be empty")
 		}
+	}
+}
+
+func TestAlerterEventFiltering(t *testing.T) {
+	tests := []struct {
+		name        string
+		events      []string
+		sendType    EventType
+		shouldAlert bool
+	}{
+		{"allowed event", []string{"exited", "success"}, EventExited, true},
+		{"filtered event", []string{"exited"}, EventStarted, false},
+		{"success allowed", []string{"success"}, EventSuccess, true},
+		{"success filtered", []string{"exited"}, EventSuccess, false},
+		{"started allowed", []string{"started", "exited"}, EventStarted, true},
+		{"empty events list", []string{}, EventExited, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var received bool
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				received = true
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			cfg := config.Default()
+			cfg.AlertMethods = []string{"webhook"}
+			cfg.WebhookURL = server.URL
+			cfg.Command = []string{"test"}
+			cfg.AlertEvents = tt.events
+
+			a := New(cfg)
+			a.Send(Event{
+				Type:    tt.sendType,
+				Message: "test",
+			})
+
+			if received != tt.shouldAlert {
+				t.Errorf("expected shouldAlert=%v, got received=%v", tt.shouldAlert, received)
+			}
+		})
 	}
 }

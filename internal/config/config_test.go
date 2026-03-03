@@ -22,6 +22,31 @@ func TestDefault(t *testing.T) {
 	if len(cfg.SuccessExitCodes) != 1 || cfg.SuccessExitCodes[0] != 0 {
 		t.Errorf("expected success-codes=[0], got %v", cfg.SuccessExitCodes)
 	}
+	// Default alert events should not include "success"
+	if cfg.ShouldAlert("success") {
+		t.Error("expected success not in default alert events")
+	}
+	// Default alert events should include standard events
+	for _, e := range []string{"started", "exited", "timeout", "restart", "health_failed", "killed"} {
+		if !cfg.ShouldAlert(e) {
+			t.Errorf("expected %s in default alert events", e)
+		}
+	}
+}
+
+func TestShouldAlert(t *testing.T) {
+	cfg := Default()
+	cfg.AlertEvents = []string{"success", "exited"}
+
+	if !cfg.ShouldAlert("success") {
+		t.Error("expected ShouldAlert(success)=true")
+	}
+	if !cfg.ShouldAlert("exited") {
+		t.Error("expected ShouldAlert(exited)=true")
+	}
+	if cfg.ShouldAlert("started") {
+		t.Error("expected ShouldAlert(started)=false")
+	}
 }
 
 func TestLoadFromFile(t *testing.T) {
@@ -104,6 +129,37 @@ func TestLoadFromFileInvalid(t *testing.T) {
 				t.Errorf("expected error for %s, got nil", tt.name)
 			}
 		})
+	}
+}
+
+func TestLoadFromFileAlertEvents(t *testing.T) {
+	content := `
+alert_events:
+  - success
+  - exited
+`
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "config.yaml")
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write temp file: %v", err)
+	}
+
+	cfg, err := LoadFromFile(tmpFile)
+	if err != nil {
+		t.Fatalf("LoadFromFile failed: %v", err)
+	}
+
+	if len(cfg.AlertEvents) != 2 {
+		t.Fatalf("expected 2 alert events, got %d", len(cfg.AlertEvents))
+	}
+	if !cfg.ShouldAlert("success") {
+		t.Error("expected success in alert events")
+	}
+	if !cfg.ShouldAlert("exited") {
+		t.Error("expected exited in alert events")
+	}
+	if cfg.ShouldAlert("started") {
+		t.Error("expected started NOT in alert events")
 	}
 }
 

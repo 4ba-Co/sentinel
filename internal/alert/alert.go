@@ -45,6 +45,11 @@ func New(cfg *config.Config) *Alerter {
 }
 
 func (a *Alerter) Send(event Event) {
+	// Filter by configured alert events
+	if !a.cfg.ShouldAlert(string(event.Type)) {
+		return
+	}
+
 	event.Timestamp = time.Now()
 	event.Hostname, _ = os.Hostname()
 	event.Command = a.cfg.Command

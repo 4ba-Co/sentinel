@@ -45,8 +45,13 @@ type Config struct {
 	// Health check timeout
 	HealthTimeout time.Duration
 
-	// Alert methods: stderr, webhook, script
+	// Alert delivery methods: stderr, webhook, script
 	AlertMethods []string
+
+	// Alert event types to subscribe to.
+	// Default: started, exited, timeout, restart, health_failed, killed.
+	// Use --alert-events to override, or --alert-on-success to append "success".
+	AlertEvents []string
 
 	// Webhook URL for alerts
 	WebhookURL string
@@ -54,7 +59,9 @@ type Config struct {
 	// Custom alert script
 	AlertCmd string
 
-	// Whether to send alert on successful exit
+	// Whether to send alert on successful exit (convenience flag).
+	// When true, appends "success" to AlertEvents.
+	// Ignored when AlertEvents is explicitly set via --alert-events.
 	AlertOnSuccess bool
 
 	// Log format: text, json
@@ -73,15 +80,32 @@ type Config struct {
 	ConfigFile string
 }
 
+// DefaultAlertEvents returns the default set of alert events.
+// This does NOT include "success" — use --alert-on-success or --alert-events to add it.
+func DefaultAlertEvents() []string {
+	return []string{"started", "exited", "timeout", "restart", "health_failed", "killed"}
+}
+
 func Default() *Config {
 	return &Config{
-		Restart:        RestartNever,
-		MaxRetries:     0,
-		GracePeriod:    10 * time.Second,
-		HealthInterval: 30 * time.Second,
-		HealthTimeout:  5 * time.Second,
-		AlertMethods:   []string{"stderr"},
-		LogFormat:      LogFormatText,
+		Restart:          RestartNever,
+		MaxRetries:       0,
+		GracePeriod:      10 * time.Second,
+		HealthInterval:   30 * time.Second,
+		HealthTimeout:    5 * time.Second,
+		AlertMethods:     []string{"stderr"},
+		AlertEvents:      DefaultAlertEvents(),
+		LogFormat:        LogFormatText,
 		SuccessExitCodes: []int{0},
 	}
+}
+
+// ShouldAlert returns true if the given event type is in the AlertEvents list.
+func (c *Config) ShouldAlert(eventType string) bool {
+	for _, e := range c.AlertEvents {
+		if e == eventType {
+			return true
+		}
+	}
+	return false
 }

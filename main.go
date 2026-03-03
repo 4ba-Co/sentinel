@@ -70,14 +70,14 @@ func run(cfg *config.Config) int {
 
 		isSuccess := isSuccessCode(cfg, exitCode)
 
-		// Send alert for non-success
+		// Send exit alert (filtered by AlertEvents in alerter.Send)
 		if !isSuccess {
 			alerter.Send(alert.Event{
 				Type:     alert.EventExited,
 				ExitCode: exitCode,
 				Message:  fmt.Sprintf("command exited with code %d (%s)", exitCode, reason),
 			})
-		} else if cfg.AlertOnSuccess {
+		} else {
 			alerter.Send(alert.Event{
 				Type:     alert.EventSuccess,
 				ExitCode: exitCode,

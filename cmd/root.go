@@ -36,7 +36,7 @@ func ParseArgs() (*config.Config, error) {
 
 	// Define flags
 	var timeout, maxRuntime, gracePeriod, healthInterval, healthTimeout, idleTimeout string
-	var restart, logFormat, alertMethods, successCodes, failureCodes string
+	var restart, logFormat, alertMethods, successCodes, failureCodes, alertEvents string
 	var maxRetries int
 	var healthCmd, webhookURL, alertCmd, configFile string
 	var alertOnSuccess bool
@@ -50,9 +50,10 @@ func ParseArgs() (*config.Config, error) {
 	fs.StringVar(&healthInterval, "health-interval", "30s", "Health check interval")
 	fs.StringVar(&healthTimeout, "health-timeout", "5s", "Health check timeout")
 	fs.StringVar(&alertMethods, "alert", "stderr", "Alert methods (comma-separated): stderr,webhook,script")
+	fs.StringVar(&alertEvents, "alert-events", "", "Alert event types (comma-separated): started,exited,success,timeout,restart,health_failed,killed")
+	fs.BoolVar(&alertOnSuccess, "alert-on-success", false, "Send alert on successful exit (appends 'success' to alert events)")
 	fs.StringVar(&webhookURL, "webhook-url", "", "Webhook URL for alerts")
 	fs.StringVar(&alertCmd, "alert-cmd", "", "Custom alert script")
-	fs.BoolVar(&alertOnSuccess, "alert-on-success", false, "Send alert on successful exit")
 	fs.StringVar(&logFormat, "log-format", "text", "Log format: text, json")
 	fs.StringVar(&successCodes, "success-codes", "0", "Exit codes to treat as success (comma-separated)")
 	fs.StringVar(&failureCodes, "failure-codes", "", "Exit codes to treat as failure (comma-separated)")
@@ -68,6 +69,7 @@ func ParseArgs() (*config.Config, error) {
 		fmt.Fprintf(os.Stderr, "  sentinel --timeout 10m -- ./my_job\n")
 		fmt.Fprintf(os.Stderr, "  sentinel --restart on-failure --max-retries 5 -- ./my_server\n")
 		fmt.Fprintf(os.Stderr, "  sentinel --alert webhook --webhook-url http://example.com/hook -- ./task\n")
+		fmt.Fprintf(os.Stderr, "  sentinel --alert-events success --alert script --alert-cmd './notify.sh' -- ./backup.sh\n")
 	}
 
 	if err := fs.Parse(flagArgs); err != nil {
@@ -155,8 +157,28 @@ func ParseArgs() (*config.Config, error) {
 		cfg.AlertCmd = alertCmd
 	}
 
-	if alertOnSuccess {
+	// Parse alert events: --alert-events overrides defaults and --alert-on-success
+	if alertEvents != "" {
+		events := strings.Split(alertEvents, ",")
+		for i := range events {
+			events[i] = strings.TrimSpace(events[i])
+		}
+		cfg.AlertEvents = events
+		// When --alert-events is explicit, it fully controls the event list.
+		// --alert-on-success is ignored.
+	} else if alertOnSuccess {
 		cfg.AlertOnSuccess = true
+		// Append "success" to AlertEvents if not already present
+		hasSuccess := false
+		for _, e := range cfg.AlertEvents {
+			if e == "success" {
+				hasSuccess = true
+				break
+			}
+		}
+		if !hasSuccess {
+			cfg.AlertEvents = append(cfg.AlertEvents, "success")
+		}
 	}
 
 	// Parse log format

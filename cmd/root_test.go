@@ -169,6 +169,74 @@ func TestParseArgsAlertOnSuccessDefault(t *testing.T) {
 	}
 }
 
+func TestParseArgsAlertEvents(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"sentinel", "--alert-events", "success,exited", "--", "echo"}
+
+	cfg, err := ParseArgs()
+	if err != nil {
+		t.Fatalf("ParseArgs failed: %v", err)
+	}
+
+	if len(cfg.AlertEvents) != 2 {
+		t.Fatalf("expected 2 alert events, got %d: %v", len(cfg.AlertEvents), cfg.AlertEvents)
+	}
+	if !cfg.ShouldAlert("success") {
+		t.Error("expected success in alert events")
+	}
+	if !cfg.ShouldAlert("exited") {
+		t.Error("expected exited in alert events")
+	}
+	if cfg.ShouldAlert("started") {
+		t.Error("expected started NOT in alert events when --alert-events is explicit")
+	}
+}
+
+func TestParseArgsAlertEventsOverridesAlertOnSuccess(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	// --alert-events should take precedence, --alert-on-success ignored
+	os.Args = []string{"sentinel", "--alert-on-success", "--alert-events", "exited", "--", "echo"}
+
+	cfg, err := ParseArgs()
+	if err != nil {
+		t.Fatalf("ParseArgs failed: %v", err)
+	}
+
+	if cfg.ShouldAlert("success") {
+		t.Error("expected success NOT in alert events when --alert-events overrides")
+	}
+	if !cfg.ShouldAlert("exited") {
+		t.Error("expected exited in alert events")
+	}
+}
+
+func TestParseArgsAlertOnSuccessAddsToEvents(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"sentinel", "--alert-on-success", "--", "echo"}
+
+	cfg, err := ParseArgs()
+	if err != nil {
+		t.Fatalf("ParseArgs failed: %v", err)
+	}
+
+	if !cfg.ShouldAlert("success") {
+		t.Error("expected success in alert events with --alert-on-success")
+	}
+	// Other defaults should still be there
+	if !cfg.ShouldAlert("started") {
+		t.Error("expected started still in alert events")
+	}
+	if !cfg.ShouldAlert("exited") {
+		t.Error("expected exited still in alert events")
+	}
+}
+
 func TestParseIntList(t *testing.T) {
 	tests := []struct {
 		input    string

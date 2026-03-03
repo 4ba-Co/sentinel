@@ -21,6 +21,7 @@ type YAMLConfig struct {
 	WebhookURL     string   `yaml:"webhook_url"`
 	AlertCmd       string   `yaml:"alert_cmd"`
 	AlertOnSuccess bool     `yaml:"alert_on_success"`
+	AlertEvents    []string `yaml:"alert_events"`
 	LogFormat      string   `yaml:"log_format"`
 	SuccessCodes   []int    `yaml:"success_codes"`
 	FailureCodes   []int    `yaml:"failure_codes"`
@@ -110,6 +111,10 @@ func LoadFromFile(path string) (*Config, error) {
 
 	if yc.AlertOnSuccess {
 		cfg.AlertOnSuccess = true
+	}
+
+	if len(yc.AlertEvents) > 0 {
+		cfg.AlertEvents = yc.AlertEvents
 	}
 
 	if yc.LogFormat != "" {
