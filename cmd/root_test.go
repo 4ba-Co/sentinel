@@ -137,6 +137,38 @@ func TestParseArgsAlertMethods(t *testing.T) {
 	}
 }
 
+func TestParseArgsAlertOnSuccess(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"sentinel", "--alert-on-success", "--", "echo"}
+
+	cfg, err := ParseArgs()
+	if err != nil {
+		t.Fatalf("ParseArgs failed: %v", err)
+	}
+
+	if !cfg.AlertOnSuccess {
+		t.Error("expected AlertOnSuccess=true")
+	}
+}
+
+func TestParseArgsAlertOnSuccessDefault(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"sentinel", "--", "echo"}
+
+	cfg, err := ParseArgs()
+	if err != nil {
+		t.Fatalf("ParseArgs failed: %v", err)
+	}
+
+	if cfg.AlertOnSuccess {
+		t.Error("expected AlertOnSuccess=false by default")
+	}
+}
+
 func TestParseIntList(t *testing.T) {
 	tests := []struct {
 		input    string

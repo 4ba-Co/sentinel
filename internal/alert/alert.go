@@ -18,12 +18,13 @@ import (
 type EventType string
 
 const (
-	EventStarted  EventType = "started"
-	EventExited   EventType = "exited"
-	EventTimeout  EventType = "timeout"
-	EventRestart  EventType = "restart"
+	EventStarted    EventType = "started"
+	EventExited     EventType = "exited"
+	EventSuccess    EventType = "success"
+	EventTimeout    EventType = "timeout"
+	EventRestart    EventType = "restart"
 	EventHealthFail EventType = "health_failed"
-	EventKilled   EventType = "killed"
+	EventKilled     EventType = "killed"
 )
 
 type Event struct {

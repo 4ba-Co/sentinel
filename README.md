@@ -45,6 +45,7 @@ sentinel [flags] -- command [args...]
 | `--alert` | Alert methods (comma-separated) | `stderr` |
 | `--webhook-url` | Webhook URL for alerts | none |
 | `--alert-cmd` | Custom alert script | none |
+| `--alert-on-success` | Send alert on successful exit | `false` |
 | `--log-format` | Log format: `text`, `json` | `text` |
 | `--success-codes` | Exit codes to treat as success | `0` |
 | `--failure-codes` | Exit codes to trigger restart | none |
@@ -78,6 +79,15 @@ sentinel \
   -- ./my_server
 ```
 
+**Cron job with success and failure notifications:**
+```bash
+sentinel \
+  --alert-on-success \
+  --alert script \
+  --alert-cmd './notify.sh' \
+  -- ./backup.sh
+```
+
 **Using config file:**
 ```bash
 sentinel --config config.yaml -- ./my_app
@@ -96,6 +106,7 @@ alert:
   - stderr
   - webhook
 webhook_url: "https://hooks.slack.com/xxx"
+alert_on_success: true
 log_format: json
 success_codes:
   - 0
@@ -106,11 +117,30 @@ success_codes:
 
 When using `--alert-cmd`, the script receives these environment variables:
 
-- `SENTINEL_EVENT`: Event type (started, exited, timeout, restart, health_failed, killed)
+- `SENTINEL_EVENT`: Event type (`started`, `exited`, `success`, `timeout`, `restart`, `health_failed`, `killed`)
 - `SENTINEL_EXIT_CODE`: Process exit code
 - `SENTINEL_MESSAGE`: Event description
 - `SENTINEL_COMMAND`: The wrapped command
 - `SENTINEL_HOSTNAME`: Host name
+
+> **Note:** The `success` event is only sent when `--alert-on-success` is enabled. By default, only non-success exits trigger the `exited` event.
+
+### Alert Script Example
+
+```bash
+#!/bin/bash
+case "$SENTINEL_EVENT" in
+  success)
+    curl -d "Backup completed on $SENTINEL_HOSTNAME" ntfy.sh/my-alerts
+    ;;
+  exited)
+    curl -d "Backup FAILED (exit=$SENTINEL_EXIT_CODE): $SENTINEL_MESSAGE" ntfy.sh/my-alerts
+    ;;
+  health_failed)
+    curl -d "Health check failed on $SENTINEL_HOSTNAME" ntfy.sh/my-alerts
+    ;;
+esac
+```
 
 ## Comparison
 

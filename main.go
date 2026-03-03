@@ -77,6 +77,12 @@ func run(cfg *config.Config) int {
 				ExitCode: exitCode,
 				Message:  fmt.Sprintf("command exited with code %d (%s)", exitCode, reason),
 			})
+		} else if cfg.AlertOnSuccess {
+			alerter.Send(alert.Event{
+				Type:     alert.EventSuccess,
+				ExitCode: exitCode,
+				Message:  fmt.Sprintf("command completed successfully (exit code %d)", exitCode),
+			})
 		}
 
 		// Determine if we should restart

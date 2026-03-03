@@ -39,6 +39,7 @@ func ParseArgs() (*config.Config, error) {
 	var restart, logFormat, alertMethods, successCodes, failureCodes string
 	var maxRetries int
 	var healthCmd, webhookURL, alertCmd, configFile string
+	var alertOnSuccess bool
 
 	fs.StringVar(&timeout, "timeout", "", "Execution timeout (e.g., 10m, 1h)")
 	fs.StringVar(&maxRuntime, "max-runtime", "", "Maximum runtime before termination")
@@ -51,6 +52,7 @@ func ParseArgs() (*config.Config, error) {
 	fs.StringVar(&alertMethods, "alert", "stderr", "Alert methods (comma-separated): stderr,webhook,script")
 	fs.StringVar(&webhookURL, "webhook-url", "", "Webhook URL for alerts")
 	fs.StringVar(&alertCmd, "alert-cmd", "", "Custom alert script")
+	fs.BoolVar(&alertOnSuccess, "alert-on-success", false, "Send alert on successful exit")
 	fs.StringVar(&logFormat, "log-format", "text", "Log format: text, json")
 	fs.StringVar(&successCodes, "success-codes", "0", "Exit codes to treat as success (comma-separated)")
 	fs.StringVar(&failureCodes, "failure-codes", "", "Exit codes to treat as failure (comma-separated)")
@@ -151,6 +153,10 @@ func ParseArgs() (*config.Config, error) {
 
 	if alertCmd != "" {
 		cfg.AlertCmd = alertCmd
+	}
+
+	if alertOnSuccess {
+		cfg.AlertOnSuccess = true
 	}
 
 	// Parse log format

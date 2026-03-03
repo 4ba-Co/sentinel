@@ -120,10 +120,42 @@ func TestAlerterScriptNoCmd(t *testing.T) {
 	a.Send(Event{Type: EventExited})
 }
 
+func TestAlerterSuccessEvent(t *testing.T) {
+	var receivedEvent Event
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&receivedEvent)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := config.Default()
+	cfg.AlertMethods = []string{"webhook"}
+	cfg.WebhookURL = server.URL
+	cfg.Command = []string{"test", "cmd"}
+
+	a := New(cfg)
+	a.Send(Event{
+		Type:     EventSuccess,
+		ExitCode: 0,
+		Message:  "command completed successfully (exit code 0)",
+	})
+
+	if receivedEvent.Type != EventSuccess {
+		t.Errorf("expected type=success, got %s", receivedEvent.Type)
+	}
+	if receivedEvent.ExitCode != 0 {
+		t.Errorf("expected exit_code=0, got %d", receivedEvent.ExitCode)
+	}
+	if receivedEvent.Message != "command completed successfully (exit code 0)" {
+		t.Errorf("expected success message, got: %s", receivedEvent.Message)
+	}
+}
+
 func TestEventTypes(t *testing.T) {
 	events := []EventType{
 		EventStarted,
 		EventExited,
+		EventSuccess,
 		EventTimeout,
 		EventRestart,
 		EventHealthFail,

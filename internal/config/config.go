@@ -54,6 +54,9 @@ type Config struct {
 	// Custom alert script
 	AlertCmd string
 
+	// Whether to send alert on successful exit
+	AlertOnSuccess bool
+
 	// Log format: text, json
 	LogFormat LogFormat
 
